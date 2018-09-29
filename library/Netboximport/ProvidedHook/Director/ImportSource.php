@@ -57,107 +57,149 @@ class ImportSource extends ImportSourceHook
         return $result;
     }
 
-    private function fetchObjects($resource, $activeOnly, $additionalKeysCallback = null)
+    private function fetchObjects($resource, $active_only, $additionalKeysCallback = null)
     {
-        $next_url = null;
-        $results = [];
-        $working_list = [];
-
-        do {
-            if ($working_list === null) {
-                // first run
-                $working_list = $this->api->getResource($resource);
-            } else {
-                // Pagination
-                $working_list = $this->api->getResource($next_url);
-            }
-
-            // Grab the next page URL or break the do/while
-            $next_url = $working_list->next ?? null;
-
-            // Remove inactive elements from the working list (if requested)
-            $working_list = array_filter($working_list, function ($o) use ($activeOnly) {
-                if ($activeOnly) {
-                    if (@$o->status->value === 1 && @$o->name !== null) {
-                        // Keep eleemnts that are active and have a name
-                        return true;
-                    } else {
-                        // Delete elements that are inactive or unnamed
-                        return false;
-                    }
-                } else {
-                    // Keep all elements
-                    return true;
-                }
         $this->log_msg("Starting ImportSource:  fetchObjects for $resource\n");
 
-                // if ($activeOnly || @$o->status->value === 1) {
-                //     return @$o->name !== null;
-                // }
-                //
-                // return true;
-                // return
-              //   (!$activeOnly || @$o->status->value === 1)
-              //   && @$o->name
-              // ;
-            });
+        $results = $this->api->getResource($resource, $active_only);
 
-            // Check each element in the working list
-            $working_list = array_map(function ($o) use ($additionalKeysCallback) {
-                // For each property that can contain an object reference
-                foreach ($this->resolve_properties as $prop) {
-                    if (@$o->$prop !== null) {
-                        // Pull resource data and associate to this element
-                        $o->$prop = $this->api->getResource($o->$prop->url);
-                    }
-                }
+        // $results = $this->flattenNestedArray('', $results);
 
-                // Flatten the object data
-                $o = $this->flattenNestedArray('', $o);
-
-                // Was a valid callback function passed?
-                if (is_callable($additionalKeysCallback)) {
-                    // Run the callback on this object's ID to find valid interfaces
-                    $keys = $additionalKeysCallback($o['id']);
-                    // Merge into current element object
-                    $o = array_merge($o, $keys);
-                }
-
-                // Filter out keys that end with __id or __url
-                $o = array_filter($o, function ($key) {
-                    //   return
-                    //     !$this->endsWith($key, '__id') &&
-                    //     !$this->endsWith($key, '__url')
-                    // ;
-                    if (preg_match("/__id$/", $key) || preg_match("/__url$/", $key)) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }, ARRAY_FILTER_USE_KEY);
-
-                // return the typecasted object
-                return (object) $o;
-            }, $working_list);
-
-            $results = array_merge($results, $working_list);
-        } while ($next_url === null);
         $this->log_msg("Results Count: " . (string)count($results) . "\n");
 
         return $results;
+
+        // $next_url = null;
+        // $results = [];
+        // $working_list = [];
+        //
+        // $loop_protection = 100; // max number of iterations, set according to expected import size
+        //
+        // do {
+        //     // $working_list = []; // reinitialize the working list
+        //
+        //     $this->log_msg("Query begin.\n");
+        //
+        //     // Pull the data from netbox
+        //     $working_list = $this->api->getResource($resource, $active_only);
+        //
+        //     $this->log_msg("Working List content:\n\n");
+        //
+        //     foreach ($working_list as $key => $value) {
+        //       $this->log_msg("\tKey: $key; Value: $value\n");
+        //     }
+        //
+        //     // Set the next URL from the working list
+        //     $resource = $working_list->next ?? null;
+        //
+        //     if($resource !== null) {
+        //       $this->log_msg("Results are paginated.  Next url: $resource\n");
+        //     }
+        //
+        //     $working_list = $this->flattenNestedArray('', $working_list);
+        //
+        //     $this->log_msg("Query complete.\nWorking List Count: " . (string)count($working_list) . "\n");
+        //
+        //
+        //     // if ($working_list === null) {
+        //     //     // first run
+        //     //     $working_list = $this->api->getResource($resource, $active_only);
+        //     //     $this->log_msg("Working list uninitialized.  Initializing with $resource (active only: $active_only).\nWorking list:\n" . implode("\n\t", $working_list));
+        //     // } else {
+        //     //     // Pagination
+        //     //     $working_list = $this->api->getResource($next_url, $active_only);
+        //     // }
+        //
+        //     // // Grab the next page URL or break the do/while
+        //     // $next_url = $working_list->next ?? null;
+        //
+        //     // // Remove inactive elements from the working list (if requested)
+        //     // $working_list = array_filter($working_list, function ($o) use ($active_only) {
+        //     //     if ($active_only) {
+        //     //         if (@$o->status->value === 1 && @$o->name !== null) {
+        //     //             // Keep eleemnts that are active and have a name
+        //     //             return true;
+        //     //         } else {
+        //     //             // Delete elements that are inactive or unnamed
+        //     //             return false;
+        //     //         }
+        //     //     } else {
+        //     //         // Keep all elements
+        //     //         return true;
+        //     //     }
+        //     //
+        //     //     // if ($active_only || @$o->status->value === 1) {
+        //     //     //     return @$o->name !== null;
+        //     //     // }
+        //     //     //
+        //     //     // return true;
+        //     //     // return
+        //     //   //   (!$active_only || @$o->status->value === 1)
+        //     //   //   && @$o->name
+        //     //   // ;
+        //     // });
+        //
+        //     // Check each element in the working list
+        //     // $working_list = array_map(function ($o) use ($additionalKeysCallback) {
+        //     //     // For each property that can contain an object reference
+        //     //     foreach ($this->resolve_properties as $prop) {
+        //     //         if (@$o->$prop !== null) {
+        //     //             // Pull resource data and associate to this element
+        //     //             $o->$prop = $this->api->getResource($o->$prop->url);
+        //     //         }
+        //     //     }
+        //     //
+        //     //     // Flatten the object data
+        //     //     $o = $this->flattenNestedArray('', $o);
+        //     //
+        //     //     // Was a valid callback function passed?
+        //     //     if (is_callable($additionalKeysCallback)) {
+        //     //         // Run the callback on this object's ID to find valid interfaces
+        //     //         $keys = $additionalKeysCallback($o['id']);
+        //     //         // Merge into current element object
+        //     //         $o = array_merge($o, $keys);
+        //     //     }
+        //
+        //         // // Filter out keys that end with __id or __url
+        //         // $o = array_filter($o, function ($key) {
+        //         //     //   return
+        //         //     //     !$this->endsWith($key, '__id') &&
+        //         //     //     !$this->endsWith($key, '__url')
+        //         //     // ;
+        //         //     if (preg_match("/__id$/", $key) || preg_match("/__url$/", $key)) {
+        //         //         return false;
+        //         //     } else {
+        //         //         return true;
+        //         //     }
+        //         // }, ARRAY_FILTER_USE_KEY);
+        //
+        //         // return the typecasted object
+        //     //     return (object) $o;
+        //     // }, $working_list);
+        //
+        //     // Merge the working list into our final results
+        //     $results = array_merge($results, $working_list);
+        //
+        //     $loop_protection--;
+        //     $this->log_msg("Finished fetchObjects for $resource.\n");
+        // } while ($next_url !== null && $loop_protection > 0);
     }
 
-    private function fetchHosts($url, $type, $activeonly)
+    private function fetchHosts($url, $type, $active_only)
     {
+        // $hosts = $this->fetchObjects(
+        //     $url,
+        //     $active_only,
+        //     function ($id) use ($type) {
+        //         // Return a flattened associative array containing the interfaces associated with $id @ $type
+        //         return $this->flattenNestedArray('', [
+        //           'interfaces' => $this->interfaces[$type][$id] ?? []
+        //       ]);
+        //     }
+        // );
         $hosts = $this->fetchObjects(
             $url,
-            $activeonly,
-            function ($id) use ($type) {
-                // Return a flattened associative array containing the interfaces associated with $id @ $type
-                return $this->flattenNestedArray('', [
-                  'interfaces' => $this->interfaces[$type][$id] ?? []
-              ]);
-            }
+            $active_only
         );
 
         return $hosts;
@@ -277,12 +319,17 @@ class ImportSource extends ImportSourceHook
         ));
     }
 
+    /**
+     * Returns an array containing importable objects
+     *
+     * @return array
+     */
     public function fetchData()
     {
         // Shortcut variables
         $baseurl = $this->getSetting('baseurl');
         $apitoken = $this->getSetting('apitoken');
-        $activeonly = $this->getSetting('activeonly') === 'y';
+        $active_only = $this->getSetting('activeonly') === 'y';
 
         // Create the API object
         $this->api = new Api($baseurl, $apitoken);
@@ -290,7 +337,7 @@ class ImportSource extends ImportSourceHook
         $this->log_file = fopen("/tmp/netbox_api.log", "a") or die("Unable to open netbox log");
 
         // Fetch interfaces from API
-        $this->interfaces = $this->fetchInterfaces('ipam/ip-addresses');
+        // $this->interfaces = $this->fetchInterfaces('ipam/ip-addresses');
 
         // Initialize an empty array
         $objects = [];
@@ -298,15 +345,17 @@ class ImportSource extends ImportSourceHook
         // Devices
         if ($this->getSetting('importdevices') === 'y') {
             // Gather object data from dcim/devices
-            $objects = $this->fetchHosts('dcim/devices', 'device', $activeonly);
-            // $objects[] = $this->fetchHosts('dcim/devices', 'device', $activeonly);
+            $objects = $this->fetchHosts('dcim/devices', 'device', $active_only);
+            // $objects[] = $this->fetchHosts('dcim/devices', 'device', $active_only);
+            $this->log_msg("Finished importing dcim/devices:\n\tCount: " . count($objects) . "\n");
         }
 
         // Virtual Machines
         if ($this->getSetting('importvirtualmachines') === 'y') {
             // Gather object data from virtualiztion/virtual-machines
-            $objects = array_merge($objects, $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $activeonly));
-            // $objects[] = $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $activeonly);
+            $objects = array_merge($objects, $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $active_only));
+            // $objects[] = $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $active_only);
+            $this->log_msg("Finished importing virtualization/virtual-machines:\n\tCount: " . count($objects) . "\n");
         }
 
         $this->log_msg("Final object to return:\n\tCount: " . count($objects) . "\n");
@@ -317,14 +366,7 @@ class ImportSource extends ImportSourceHook
         return $objects;
     }
 
-    public function listColumns()
-    {
-        // return a list of all keys, which appeared in any of the objects
-        return array_keys(array_merge(...array_map('get_object_vars', $this->fetchData())));
-    }
-
-    public function getName()
-    {
+    /** * Returns a list of all available columns * * @return array */ public function listColumns() { // return a list of all keys, which appeared in any of the objects return array_keys(array_merge(...array_map('get_object_vars', $this->fetchData()))); } // Override class function to specify the module name public function getName() {
         return 'Netbox';
     }
 }
