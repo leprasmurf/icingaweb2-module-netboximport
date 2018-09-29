@@ -8,7 +8,8 @@ use Icinga\Module\Director\Hook\ImportSourceHook;
 use Icinga\Module\Netboximport\Api;
 
 error_reporting(E_ALL);
-ini_set('max_execution_time', 3600);
+ini_set('max_execution_time', 600);
+ini_set('memory_limit', 536870912);
 
 class ImportSource extends ImportSourceHook
 {
