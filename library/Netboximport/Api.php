@@ -9,11 +9,16 @@ class Api
         $this->baseurl = rtrim($baseurl, '/') . '/';
         $this->apitoken = $apitoken;
         $this->cache = [];
+        $this->log_file = '/tmp/netbox_api.log';
     }
 
     // private static function startsWith($haystack, $needle) {
     //      return (substr($haystack, 0, strlen($needle)) === $needle);
     // }
+    private function log_msg($msg)
+    {
+        fwrite($this->log_file, $msg);
+    }
 
     private function setupCurl()
     {
@@ -75,6 +80,8 @@ class Api
         // Tie it all together
         $uri = $this->baseurl . trim($url_path, '/') . '/?' . $query;
 
+        $this->log_msg("Final URI: $uri\n");
+
         curl_setopt($ch, CURLOPT_URL, $uri);
 
         $response = curl_exec($ch); // CURLOPT_RETURNTRANSFER makes this a string
@@ -127,8 +134,25 @@ class Api
             $data = $this->apiGet($resource);
         }
 
+        $this->log_file = fopen($this->log_file, "a");
+
         // $this->cache[$cache_key] = $data;
 
+            $this->log_msg("Query: ". json_encode($query) . "\n");
+
         return $data;
+                $this->log_msg("API: Working Query: " . json_encode($working_query) . "\n");
+
+            // $this->log_msg("API:  GET $resource['path'] (active: $active_only)\n\tQuery: $query\n");
+            $this->log_msg("API:  GET shit\n\tPath: " . $resource['path'] . "\n\tQuery: " . json_encode($query) . "\n");
+            if ($resource !== null) {
+                $this->log_msg("API: Pagination found: $resource\n");
+            }
+
+        // Debug
+        // $this->log_msg("Returning results: " . json_encode($results) . "\n");
+        $this->log_msg("Returning " . count($results) . " results.\n");
+
+        fclose($this->log_file);
     }
 }

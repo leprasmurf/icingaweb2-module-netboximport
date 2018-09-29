@@ -17,6 +17,12 @@ class ImportSource extends ImportSourceHook
     private $resolve_properties = [
         "cluster",
     ];
+    private $log_file;
+
+    private function log_msg($msg)
+    {
+        fwrite($this->log_file, $msg);
+    }
 
     // private static function endsWith($haystack, $needle)
     // {
@@ -83,6 +89,7 @@ class ImportSource extends ImportSourceHook
                     // Keep all elements
                     return true;
                 }
+        $this->log_msg("Starting ImportSource:  fetchObjects for $resource\n");
 
                 // if ($activeOnly || @$o->status->value === 1) {
                 //     return @$o->name !== null;
@@ -135,6 +142,7 @@ class ImportSource extends ImportSourceHook
 
             $results = array_merge($results, $working_list);
         } while ($next_url === null);
+        $this->log_msg("Results Count: " . (string)count($results) . "\n");
 
         return $results;
     }
@@ -279,6 +287,8 @@ class ImportSource extends ImportSourceHook
         // Create the API object
         $this->api = new Api($baseurl, $apitoken);
 
+        $this->log_file = fopen("/tmp/netbox_api.log", "a") or die("Unable to open netbox log");
+
         // Fetch interfaces from API
         $this->interfaces = $this->fetchInterfaces('ipam/ip-addresses');
 
@@ -298,6 +308,10 @@ class ImportSource extends ImportSourceHook
             $objects = array_merge($objects, $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $activeonly));
             // $objects[] = $this->fetchHosts('virtualization/virtual-machines', 'virtual-machine', $activeonly);
         }
+
+        $this->log_msg("Final object to return:\n\tCount: " . count($objects) . "\n");
+
+        fclose($this->log_file);
 
         // return array_merge(...$objects);
         return $objects;
