@@ -2,6 +2,8 @@
 
 namespace Icinga\Module\Netboximport;
 
+use Icinga\Module\Director\Objects\IcingaObject;
+
 class Api
 {
     public function __construct($baseurl, $apitoken)
@@ -43,52 +45,10 @@ class Api
 
         return $result;
     }
-    // private static function startsWith($haystack, $needle) {
-    //      return (substr($haystack, 0, strlen($needle)) === $needle);
-    // }
-    //
-    // private function setupCurl()
-    // {
-    //     $ch = curl_init();
-    //
-    //     // Configure curl
-    //     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // curl_exec returns response as a string
-    //     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // Follow redirect requests
-    //     curl_setopt($ch, CURLOPT_MAXREDIRS, 5); // limit number of redirects to follow
-    //
-    //     curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-    //         'Authorization: Token ' . $this->apitoken,
-    //     ));
-    //
-    //     return $ch;
-    // }
 
-    // private function apiRequest($method, $url, $get_params, $ch = null)
-    // private function apiGet($url, $get_params = [], $ch = null)
+    // returns json parsed object from GET request
     private function apiGet($url_path, $active_only, $get_params = [])
     {
-        // if ($this->startsWith($url, $this->baseurl)) {
-        //     $url = substr($url, strlen($this->baseurl));
-        // } else if ($this->startsWith(preg_replace("/^http:/i", "https:", $url), $this->baseurl)) {
-        //     $url = substr($url, strlen($this->baseurl)-1);
-        // } else if ($this->startsWith(preg_replace("/^https:/i", "http:", $url), $this->baseurl)) {
-        //     $url = substr($url, strlen($this->baseurl)+1);
-        // }
-
-        //  This module should only ever pull information from netbox, right?
-        // if($method == 'POST') {
-        //     curl_setopt($ch, CURLOPT_POST, 1);
-        // } elseif ($method == 'PUT') {
-        //     curl_setopt($ch, CURLOPT_PUT, 1);
-        // } else {
-        //     // defaults to GET
-        // }
-
-
-        // Create curl object if necessary
-        // if (!isset($ch)) {
-        //     $ch = $this->setupCurl();
-        // }
         $ch = curl_init();
 
         // Configure curl
@@ -99,23 +59,8 @@ class Api
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Authorization: Token ' . $this->apitoken,
         ));
-        // $url_path = parse_url($url, PHP_URL_PATH);
-        //
-        // // Return empty object if path is blank
-        // if (trim($url_path, '/') === '') {
-        //     return [];
-        // }
-        //
         // Strip '/api' since it's included in $this->baseurl
         $url_path = preg_replace("#^/api/#", "/", $url_path);
-
-        // $get_params = parse_url($url, PHP_URL_QUERY);
-
-        // This is limited by MAX_PAGE_SIZE (https://netbox.readthedocs.io/en/stable/configuration/optional-settings/#max_page_size)
-        // $get_params['limit'] = 1000;
-        // $get_params['status'] = $active_only;
-        // $get_params['has_primary_ip'] = 'True';
-        // $this->log_msg("Active Only: $active_only\n");
 
         // Convert parameters to URL-encoded query string
         $query = http_build_query($get_params);
@@ -126,7 +71,7 @@ class Api
         // get rid of duplicate slashes
         $uri = preg_replace("#//#", "/", $uri);
 
-        $this->log_msg("Final URI: $uri\n");
+        $this->log_msg("\tFinal URI: $uri\n");
 
         curl_setopt($ch, CURLOPT_URL, $uri);
 
@@ -138,166 +83,108 @@ class Api
             $response = json_decode($response);
 
             return $response;
-        // if (!isset($response->results)) { // single object
-            //     return $response;
-            // } elseif (isset($response->next)) { // paginated results
-            //     // more results
-            //     // array_merge($response->results, apiRequest($method, $url, $get_params, $ch)); // recursion
-            //     $all_results = array_merge(
-            //     $response->results,
-            //     $this->apiGet($response->next, $get_params, $ch)
-            //   );
-            //     return $all_results;
-            // } elseif (!isset($response->next)) { // end of pagination or single page
-            //     return $response->results;
-            // }
-
-            // if(isset($response->results)) {
-            //     return $response->results; // collection
-            // } else {
-            //     return $response; // single
-            // }
         } else {
             throw new \Exception("Netbox API request failed: uri=$uri; status=$status; error=$curl_error");
         }
     }
 
-    public function sanitizeUrl($url_in)
-    {
-        $url_out = parse_url($url_in);
+    // $get_params
+    private function parseGetParams($get_params = []) {
+        $return_params = [
+            // "limit" => "1000"
+            "limit" => "10"
+        ];
 
-        $url_out = preg_replace("#^/api/#", "/", $url_out['path']);
+        // No get parameters set yet
+        if($get_params === []) {
+          return $return_params;
+        } else if(is_string($get_params)) {
+          // get parameters is currently in string format from `parse_url`
+          // should be in the form of key=value&key2=value&key3=value
+          $get_params = explode('&', $get_params);
 
-        return $url_out;
+          foreach ($get_params as $elements) {
+              // Break "key=value" into array
+              $tmp_array = explode('=', $elements);
+
+              // Save to the return array
+              $return_params[$tmp_array[0]] = $tmp_array[1];
+          }
+        } else {
+            $return_params = array_merge($return_params, $get_params);
+        }
+
+        return $return_params;
     }
 
     // Query API for resource passed
-    //    $resource(String) - API Path
-    // public function getResource($resource, $filter=array(), $cache=true)
-    public function getResource($resource, $active_only = 0)
+    public function getResource($resource, $active_only = 0, $pagination = true)
     {
-        // $cache_key = sha1($resource . json_encode($filter));
-        //
-        // if (isset($this->cache[$cache_key])) {
-        //     return $this->cache[$cache_key];
-        // }
-
-        // if ($follow_pagination === true) {
-        //     // loop over resource until "next" field is null
-        //     $data = $this->apiGet($resource);
-        // } else {
-        //     $data = $this->apiGet($resource);
-        // }
-
-        // // $this->cache[$cache_key] = $data;
-        // $url_path = parse_url($resource, PHP_URL_PATH);
-        //
-        // // Return empty object if path is blank
-        // // Reset the url path if the url parsing failed
-        // if (trim($url_path, '/') === '') {
-        //   $url_path = $resource;
-        //     // return [];
-        // }
-
-        // // Strip '/api' since it's included in $this->baseurl
-        // $url_path = preg_replace("#^/api/#", "/", $url_path);
-
         $results = [];
-        $loop_protection = 10;
-        $get_params = [
-          "limit" => "1000",
-          "status" => "$active_only"
-        ];
+        $loop_protection = 5;
 
         $this->log_file = fopen($this->log_file, "a");
 
         do {
-            // Sanitize the input URL
-            // $resource = $this->sanitizeUrl($resource);
+            $loop_protection--;
 
             // Parse URL and assign query if set
             $resource = parse_url($resource);
-            $query = $resource['query'] ?? [];
 
-            $this->log_msg("Query: ". json_encode($query) . "\n");
+            $query = $this->parseGetParams($resource['query'] ?? []);
 
-            // If query is empty
-            if ($query === []) {
-                // copy default parameters
-                $query = $get_params;
-            } else {
-                // break query string into array
-                $working_query = explode('&', $query);
-                $query = [];
-
-                $this->log_msg("API: Working Query: " . json_encode($working_query) . "\n");
-
-                // Cycle through the working query array
-                foreach ($working_query as $elements) {
-                    // break query elements into key => value pairs
-                    $tmp_query = explode("=", $elements);
-
-                    // Save to the query array
-                    // array_push($query, $tmp_query);
-                    $query[$tmp_query[0]] = $tmp_query[1];
-                }
-                // foreach(explode('=', $working_query) as $key => $value) {
-                //   $query[$key] = $value;
-                // }
-                //
-                // $query = explode('&', $query); // separate query elements
-                // // Separate query key value pairs
-                // $query = array_map(function($q) {
-                //   return explode('=', $q);
-                // }, $query);
-
-                // Merge default parameters
-                $query = array_merge($query, $get_params);
-            }
+            // Add the "active only" preference to the query
+            $query["status"] = "$active_only";
 
             // $this->log_msg("API:  GET $resource['path'] (active: $active_only)\n\tQuery: $query\n");
-            $this->log_msg("API:  GET shit\n\tPath: " . $resource['path'] . "\n\tQuery: " . json_encode($query) . "\n");
+            $this->log_msg("API:  GET -- Path: " . $resource['path'] . " -- Query: " . json_encode($query) . "\n");
 
-
-            // if(isset($resource['query'])) {
-            //   $working_list = $this->apiGet($resource['path'], $active_only, $resource['query']);
-            // } else {
-            //   $working_list = $this->apiGet($resource['path'], $active_only);
-            // }
-            // Pull resource from API
             $working_list = $this->apiGet($resource['path'], $active_only, $query);
 
             // Grab the next URL if it exists
             $resource = $working_list->next ?? null;
 
             if ($resource !== null) {
-                $this->log_msg("API: Pagination found: $resource\n");
+                $this->log_msg("\tAPI: Pagination found: $resource\n");
             }
 
-            // Drop all but ->results if key exists, otherwise noop.
-            // if(isset($working_list->results)) {
-            //   $working_list = $working_list->results
-            // }
-
+            // Set the working list to results if multiple objects returned
             $working_list = $working_list->results ?? $working_list;
+
+            // Filter object missing the key column
+            // TODO:  switch hard-coded `id` field to current setting
+            // $working_list = array_filter($working_list, function($obj) {
+            //     if($obj === null) {
+            //         return false;
+            //     }
+            //
+            //     if(isset($obj['id']) && $obj['id'] !== '') {
+            //         return true;
+            //     } else {
+            //         return false;
+            //     }
+            // });
 
             // Work the objects into the results array keyed to the object ID
             foreach($working_list as $obj) {
-              array_push($results, $obj);
-              // $results[$obj->id] = $obj;
+                $flat_object = $this->flattenNestedArray('', $obj);
+                // $this->log_msg("\tAdding " . $flat_object['id'] . "\n");
+                // TODO:  Change the check to the key column in lieu of hard-coded 'id' field
+                if(isset($flat_object['id']) && $flat_object['id'] !== '') {
+                    // $this->log_msg("Adding flat object to " . count($results) . ".\n");
+                    $results[] = $flat_object;
+                }
             }
-            // $working_list = $this->flattenNestedArray('', $working_list);
-            // $this->log_msg("API: Working list results: " . count($working_list) . "\n");
 
-            // Merge the current iteration's data into the results
-            // array_merge($results, $working_list);
-            $loop_protection--;
+            $this->log_msg("Results count: " . count($results) . "\n");
         } while ($resource !== null && $loop_protection > 0);
 
         // Debug
         // $this->log_msg("Returning results: " . json_encode($results) . "\n");
         $this->log_msg("Returning " . count($results) . " results.\n");
 
+        // $this->log_msg("First record id: " . $results[0]['id'] . "\n");
+        // $this->log_msg("Results: " . json_encode($results) . "\n");
         fclose($this->log_file);
         return $results;
     }
