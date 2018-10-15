@@ -7,9 +7,8 @@ use Icinga\Module\Director\Web\Form\QuickForm;
 use Icinga\Module\Director\Hook\ImportSourceHook;
 use Icinga\Module\Netboximport\Api;
 
-error_reporting(E_ALL);
-ini_set('max_execution_time', 600);
-// ini_set('memory_limit', 536870912);
+// error_reporting(E_ALL);
+// ini_set('max_execution_time', 600);
 
 class ImportSource extends ImportSourceHook
 {
@@ -18,24 +17,6 @@ class ImportSource extends ImportSourceHook
         "cluster",
     ];
     private $log_file;
-
-    private function log_msg($msg)
-    {
-        fwrite($this->log_file, $msg);
-    }
-
-    private function fetchObjects($resource, $active_only, $additionalKeysCallback = null)
-    {
-        $this->log_msg("Starting ImportSource:  fetchObjects for $resource\n");
-
-        $results = $this->api->getResource($resource, $active_only);
-
-        $this->log_msg("(ImportSource/fetchObjects) Results Count: " . count($results) . "\n");
-
-        // $this->log_msg("\n" . json_encode($results) . "\n");
-
-        return $results;
-    }
 
     public static function addSettingsFormFields(QuickForm $form)
     {
@@ -71,61 +52,36 @@ class ImportSource extends ImportSourceHook
         ));
     }
 
+    // Pull objects from API
+    private function fetchObjects($resource, $pagination)
+    {
+        // Only return active devices?
+        $active_only = $this->getSetting('activeonly') === 'y';
+
+        // Pull data from the API
+        return $this->api->getResource($resource, $this->getDefaultKeyColumnName(), $active_only, $pagination);
+    }
+
     /**
      * Returns an array containing importable objects
      *
-     * @return array
+     * @return [obj, obj, obj, ...]
      */
-    public function fetchData()
+    public function fetchData($pagination = true)
     {
-        // Shortcut variables
-        $baseurl = $this->getSetting('baseurl');
-        $apitoken = $this->getSetting('apitoken');
-        $active_only = $this->getSetting('activeonly') === 'y';
-        $key_column = "id";
-        // $key_column = $this->getSetting('key_column', 'id');
-        // $key_column = $this->getSetting('source_name');
-
-        // Create the API object
-        $this->api = new Api($baseurl, $apitoken);
-
-        $this->log_file = fopen("/tmp/netbox_api.log", "a") or die("Unable to open netbox log");
-
         // Initialize an empty array
         $objects = [];
 
-        // Devices
+        // Create the API object
+        $this->api = new Api(
+            $this->getSetting('baseurl'),
+            $this->getSetting('apitoken')
+        );
+
+        // Import Devices
         if ($this->getSetting('importdevices') === 'y') {
-            $tmp_obj = $this->fetchObjects('dcim/devices', $active_only);
-
-            $this->log_msg("DCIM Devices retrieved:  " . count($tmp_obj) . "\n");
-
-            foreach($tmp_obj as $o) {
-                $objects[] = $o;
-            }
+            $objects = $this->fetchObjects('dcim/devices', $pagination);
         }
-
-        $this->log_msg("Final object to return:\n\tCount: " . count($objects) . "\n");
-
-        //$this->log_msg(json_encode($objects) . "\n\n");
-        $this->log_msg("Key column '$key_column' for return object:\n");
-        foreach ($objects as $row) {
-            $this->log_msg($row[$key_column] . " | ");
-        }
-        $this->log_msg("\n\n");
-
-        for($i = 0; $i < count($objects); $i++) {
-            $this->log_msg("Array keys for row #" . $i . ":\n");
-            foreach(array_keys($objects[$i]) as $key) {
-                $this->log_msg("\t$key\n");
-            }
-        }
-
-        // $this->log_msg("\nArray Keys:  " . json_encode(array_keys($objects)) . "\n");
-
-        $this->log_msg("\n---\n" . json_encode($objects) . "\n---\n");
-
-        fclose($this->log_file);
 
         return $objects;
     }
@@ -135,21 +91,30 @@ class ImportSource extends ImportSourceHook
     *
     * @return array
     */
-    public function listColumns() {
-      $results = array_keys($this->fetchData()[0]);
-      $this->log_file = fopen("/tmp/netbox_api.log", "a") or die("Unable to open netbox log");
-      // $this->log_msg("Preview output:\n\t" . json_encode($results) . "\n\n");
-      fclose($this->log_file);
+    public function listColumns()
+    {
+        // Grab the first page of results
+        $results = $this->fetchData(false);
 
+        // Grab array keys from the non-static variables present in the first results record
+        $columns = array_keys(get_object_vars($results[0]));
 
-      return $results;
-      // return a list of all keys, which appeared in any of the objects
-      // return array_keys(array_merge(...array_map('get_object_vars', $this->fetchData())));
-      // return array_keys($this->fetchData());
+        return $columns;
     }
 
-    // Override class function to specify the module name
-    public function getName() {
+    /**
+     * @inheritdoc
+     */
+    public static function getDefaultKeyColumnName()
+    {
+        return 'name';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getName()
+    {
         return 'Netbox';
     }
 }
